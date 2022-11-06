@@ -1,15 +1,17 @@
 package utils
 
-import (
-	"github.com/spf13/cobra"
-	"log"
-)
-
-func GetNameSpace(cmd *cobra.Command) string {
-	ns, err := cmd.Flags().GetString("namespace")
-	if err != nil {
-		log.Println(err)
+func InArray( comm []string,c string) bool {
+	for _,i := range comm{
+		switch i {
+		case "get":
+			return true
+		case "scale":
+			return true
+		case "list":
+			return true
+		default:
+			return false
+		}
 	}
-
-	return ns
+	return false
 }

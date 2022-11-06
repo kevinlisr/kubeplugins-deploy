@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"github.com/c-bata/go-prompt"
 	"github.com/kevinlisr/gokpdep/pkg/cache"
+	"github.com/kevinlisr/gokpdep/pkg/utils"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/tidwall/gjson"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/client-go/informers"
 	"log"
 	"os"
 	"regexp"
@@ -18,8 +18,18 @@ import (
 
 var fields string
 var PodName string
-var Ns string
 
+
+func GetNameSpace(cmd *cobra.Command) string {
+	ns, err := cmd.Flags().GetString("namespace")
+	if err != nil {
+		log.Println(err)
+	}
+	if ns == ""{
+		ns = Ns
+	}
+	return ns
+}
 
 
 func setNamespace(c *cobra.Command,a []string) string {
@@ -61,9 +71,15 @@ func executorCmd(cmd *cobra.Command,ns *string) func(in string) {
 		case "list":
 			//getPodDetail(args)
 			RenderDeploy(args,cmd)
+		case "get":
+			//getPodDetail(args)
+			runtea(args,cmd,*ns)
 		case "set":
 			fmt.Printf("ns is null set ns == %s", args[1])
 			*ns = args[1]
+		case "scale":
+			//getPodDetail(args)
+			ScaleDeploy(args,cmd)
 		case "clear":
 			clearConsole()
 
@@ -99,7 +115,13 @@ var podSuggestions = []prompt.Suggest{
 	{"exit","exit the interactive window"},
 	{"exec","exec the container"},
 }
-
+var scaleSuggestions = []prompt.Suggest{
+	{"get","get deployments details"},
+	{"list","show deployments list"},
+	{"exit","exit the interactive window"},
+	{"scale","scale deployments replicas"},
+	{"exec","exec the container"},
+}
 
 
 func parseCmd(w string) (string, string) {
@@ -126,23 +148,18 @@ func parseCmd(w string) (string, string) {
 //	return prompt.FilterHasPrefix(suggestions,w,true)
 //}
 
-func completerCmd(ns *string) func (in prompt.Document) []prompt.Suggest {
+func completerCmd(ns *string,c *cobra.Command) func (in prompt.Document) []prompt.Suggest {
 	return func (in prompt.Document) []prompt.Suggest {
 		w := in.GetWordBeforeCursor()
 		if w == ""{
 			return []prompt.Suggest{}
 		}
 		cmd, opt := parseCmd(in.TextBeforeCursor())
-		//fmt.Println(cmd)
 
-		//if inArray([]string{"get","del","exec"},cmd){
-		//	return prompt.FilterHasPrefix(getPodsList(ns),opt,true)
-		//}
-
-		if cmd == "list"{
+		if utils.InArray([]string{"get","list","scale"},cmd){
 			return prompt.FilterHasPrefix(RecommendDeployments(*ns),opt,true)
+			//return prompt.FilterHasPrefix(scaleSuggestions,opt,true)
 		}
-
 
 		return prompt.FilterHasPrefix(suggestions,w,true)
 	}
@@ -151,12 +168,12 @@ func completerCmd(ns *string) func (in prompt.Document) []prompt.Suggest {
 var err error
 var MyConsoleWriter = prompt.NewStderrWriter()
 var Labels string
-var Factory informers.SharedInformerFactory
+//var Factory informers.SharedInformerFactory
 
 var PromptCmd = &cobra.Command{
 	Use: "prompt",
-	Short: "prompt pods",
-	Example: "kubectl pods prompt [flags]",
+	Short: "prompt deployments",
+	Example: "kubectl deployments prompt [flags]",
 	SilenceUsage: true,
 	RunE: func(c *cobra.Command, args []string) error {
 
@@ -177,7 +194,7 @@ var PromptCmd = &cobra.Command{
 		cache.InitCache()
 		p := prompt.New(
 			executorCmd(c,&Ns),
-			completerCmd(&Ns),
+			completerCmd(&Ns,c),
 			prompt.OptionPrefix(">>>"),
 			// she zhi  "clear" ming ling lai qing ping
 			prompt.OptionWriter(MyConsoleWriter),
@@ -212,7 +229,7 @@ var cacheCmd = &cobra.Command{
 			//Ns="default"
 		}
 
-		pods, err := Factory.Core().V1().Pods().Lister().Pods(Ns).
+		pods, err := cache.Factory.Core().V1().Pods().Lister().Pods(Ns).
 			List(labels.Everything())
 		if err != nil {
 			return err
